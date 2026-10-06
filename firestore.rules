@@ -1,0 +1,198 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny-all catch-all safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // USERS COLLECTION
+    // Users can read and write only their own data.
+    // Only admins can change roles.
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      
+      allow create: if isSignedIn() 
+        && request.auth.uid == userId
+        && request.resource.data.role in ['rider', 'driver']
+        && request.resource.data.uid == userId;
+
+      allow update: if isSignedIn() && (
+        // Regular user updating their own profile (cannot change role or uid)
+        (isOwner(userId) 
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'uid', 'createdAt']))
+        // Admin can update anything, including role
+        || isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // DRIVERS COLLECTION
+    // Driver public status and live GPS
+    match /drivers/{driverId} {
+      // Any signed in user can read online drivers for matching and map display
+      allow read: if isSignedIn();
+      
+      allow create: if isOwner(driverId) 
+        && request.resource.data.uid == driverId
+        && request.resource.data.verificationStatus in ['PENDING', 'UNDER_REVIEW'];
+
+      allow update: if isSignedIn() && (
+        // Driver can update their own GPS, heading, speed, and online toggle ONLY IF VERIFIED
+        (isOwner(driverId) && (
+          // If toggling isOnline to true, verificationStatus must already be VERIFIED
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['verificationStatus', 'rejectionReason', 'rating', 'totalRides']))
+          && (request.resource.data.isOnline == false || resource.data.verificationStatus == 'VERIFIED')
+        ))
+        // Admin can update verification status and details
+        || isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // DRIVER DOCUMENTS (Private)
+    // Accessible only by the driver themselves and admins
+    match /driverDocuments/{driverId} {
+      allow get: if isOwner(driverId) || isAdmin();
+      allow list: if isAdmin();
+      
+      allow create, update: if isOwner(driverId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // PRICING (Vehicle tier rates and surge settings)
+    // Readable by all signed-in users (or guests calculating fare)
+    // Editable only by admins
+    match /pricing/{vehicleType} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // RIDES COLLECTION
+    // Strict lifecycle: REQUESTED -> DRIVER_ASSIGNED -> DRIVER_ARRIVING -> DRIVER_ARRIVED -> RIDE_STARTED -> RIDE_COMPLETED -> PAYMENT_COMPLETED (or CANCELLED)
+    match /rides/{rideId} {
+      // Rider, assigned driver, or admin can read (drivers cannot read SCHEDULED rides)
+      allow get: if isSignedIn() && (
+        (resource.data.status == 'SCHEDULED' && (resource.data.riderId == request.auth.uid || isAdmin())) ||
+        (resource.data.status != 'SCHEDULED' && (
+          resource.data.riderId == request.auth.uid ||
+          resource.data.driverId == request.auth.uid ||
+          isAdmin()
+        ))
+      );
+
+      // List: Rider queries their rides, driver queries assigned/available rides, admin queries all
+      allow list: if isSignedIn();
+
+      // Create: Signed-in rider can request a ride OR create a PREBOOKED scheduled ride
+      allow create: if isSignedIn() 
+        && request.resource.data.riderId == request.auth.uid
+        && (
+          request.resource.data.status == 'REQUESTED' ||
+          (request.resource.data.status == 'SCHEDULED' && request.resource.data.bookingType == 'PREBOOKED')
+        )
+        // Fair surge pricing validation: final fare must not exceed maxAllowedFare
+        && request.resource.data.finalFare <= request.resource.data.maxAllowedFare;
+
+      // Update: State machine transitions
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        // Rider can cancel if before start, or rate after completion
+        (resource.data.riderId == request.auth.uid && (
+          (request.resource.data.status == 'CANCELLED' && resource.data.status in ['REQUESTED', 'DRIVER_ASSIGNED', 'DRIVER_ARRIVING']) ||
+          (request.resource.data.status == 'CANCELLED' && resource.data.status == 'SCHEDULED' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt', 'cancelledBy', 'cancellationReason'])) ||
+          (resource.data.status in ['RIDE_COMPLETED', 'PAYMENT_COMPLETED'] && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['riderRating', 'riderFeedback', 'paymentMethod', 'paymentStatus']))
+        )) ||
+        // Promotion: SCHEDULED -> REQUESTED (search started)
+        (resource.data.status == 'SCHEDULED' && request.resource.data.status == 'REQUESTED' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'searchStartedAt', 'finalFare', 'surgePercentage', 'surgeAmount', 'fareBreakdown'])) ||
+        // Driver accepting ride: only if currently REQUESTED, driver sets status to DRIVER_ASSIGNED
+        (resource.data.status == 'REQUESTED' && request.resource.data.status == 'DRIVER_ASSIGNED' && request.resource.data.driverId == request.auth.uid) ||
+        // Assigned driver advancing lifecycle
+        (resource.data.driverId == request.auth.uid && (
+          (resource.data.status == 'DRIVER_ASSIGNED' && request.resource.data.status == 'DRIVER_ARRIVING') ||
+          (resource.data.status == 'DRIVER_ARRIVING' && request.resource.data.status == 'DRIVER_ARRIVED') ||
+          (resource.data.status == 'DRIVER_ARRIVED' && request.resource.data.status == 'RIDE_STARTED') ||
+          (resource.data.status == 'RIDE_STARTED' && request.resource.data.status == 'RIDE_COMPLETED') ||
+          (resource.data.status == 'RIDE_COMPLETED' && request.resource.data.status == 'PAYMENT_COMPLETED') ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverRatingScore']))
+        ))
+      );
+
+      // GPS Logs subcollection during ride
+      match /gpsLogs/{logId} {
+        allow read: if isSignedIn() && (
+          get(/databases/$(database)/documents/rides/$(rideId)).data.riderId == request.auth.uid ||
+          get(/databases/$(database)/documents/rides/$(rideId)).data.driverId == request.auth.uid ||
+          isAdmin()
+        );
+        allow create: if isSignedIn() && (
+          get(/databases/$(database)/documents/rides/$(rideId)).data.driverId == request.auth.uid ||
+          isAdmin()
+        );
+      }
+    }
+
+    // EMERGENCY ALERTS (SOS)
+    match /emergencyAlerts/{alertId} {
+      allow read: if isSignedIn() && (
+        resource.data.riderId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && request.resource.data.riderId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        // Rider can update live location while active
+        (resource.data.riderId == request.auth.uid && resource.data.status == 'ACTIVE') ||
+        isAdmin()
+      );
+    }
+
+    // TRACKING TOKENS (Public live tracking for trusted contacts)
+    match /trackingTokens/{tokenHash} {
+      // Anyone with the valid token hash can read the metadata
+      allow get: if true;
+      // Creation by rider
+      allow create: if isSignedIn() && request.resource.data.riderId == request.auth.uid;
+      // Revocation by rider or expiration
+      allow update: if isSignedIn() && (
+        resource.data.riderId == request.auth.uid || isAdmin()
+      );
+    }
+
+    // FRAUD REPORTS
+    match /fraudReports/{rideId} {
+      allow read: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.driverId == request.auth.uid ||
+          resource.data.riderId == request.auth.uid
+        )
+      );
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+  }
+}

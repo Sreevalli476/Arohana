@@ -1,0 +1,6 @@
+{
+  "name": "ĀroHana - Fair Rides & Trusted Drivers",
+  "description": "Fair Rides. Trusted Drivers. Safer Journeys. Real-time ride booking with transparent pricing, driver verification, GPS fraud detection, and trusted contact live tracking.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

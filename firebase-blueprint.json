@@ -1,0 +1,213 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role and contact information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 120 },
+        "name": { "type": "string", "maxLength": 80 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "role": { "type": "string", "enum": ["rider", "driver", "admin"] },
+        "createdAt": { "type": "string" },
+        "trustedContact": { "type": "object" },
+        "vehicleType": { "type": "string", "enum": ["bike", "auto", "sedan", "suv"] },
+        "vehicleNumber": { "type": "string", "maxLength": 20 },
+        "vehicleModel": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["uid", "email", "name", "role", "createdAt"]
+    },
+    "Driver": {
+      "title": "Driver",
+      "description": "Driver live status, position, and verification state",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 80 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "vehicleType": { "type": "string", "enum": ["bike", "auto", "sedan", "suv"] },
+        "vehicleNumber": { "type": "string", "maxLength": 20 },
+        "vehicleModel": { "type": "string", "maxLength": 50 },
+        "isOnline": { "type": "boolean" },
+        "verificationStatus": { "type": "string", "enum": ["PENDING", "UNDER_REVIEW", "VERIFIED", "REJECTED", "RE_UPLOAD"] },
+        "rejectionReason": { "type": "string", "maxLength": 300 },
+        "rating": { "type": "number" },
+        "totalRides": { "type": "number" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "accuracy": { "type": "number" },
+        "speed": { "type": "number" },
+        "heading": { "type": "number" },
+        "lastLocationUpdate": { "type": "string" }
+      },
+      "required": ["uid", "vehicleType", "vehicleNumber", "isOnline", "verificationStatus"]
+    },
+    "DriverDocuments": {
+      "title": "DriverDocuments",
+      "description": "Base64 encoded compressed driver documents and OCR results",
+      "type": "object",
+      "properties": {
+        "driverId": { "type": "string", "maxLength": 128 },
+        "govtIdBase64": { "type": "string", "maxLength": 1000000 },
+        "dlBase64": { "type": "string", "maxLength": 1000000 },
+        "rcBase64": { "type": "string", "maxLength": 1000000 },
+        "insuranceBase64": { "type": "string", "maxLength": 1000000 },
+        "extractedData": { "type": "object" },
+        "ocrValidation": { "type": "object" },
+        "uploadedAt": { "type": "string" }
+      },
+      "required": ["driverId", "uploadedAt"]
+    },
+    "Ride": {
+      "title": "Ride",
+      "description": "Ride booking details, lifecycle, and pricing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "riderId": { "type": "string", "maxLength": 128 },
+        "riderName": { "type": "string", "maxLength": 80 },
+        "riderPhone": { "type": "string", "maxLength": 20 },
+        "driverId": { "type": "string", "maxLength": 128 },
+        "driverName": { "type": "string", "maxLength": 80 },
+        "driverPhone": { "type": "string", "maxLength": 20 },
+        "driverVehicleNumber": { "type": "string", "maxLength": 20 },
+        "driverVehicleModel": { "type": "string", "maxLength": 50 },
+        "driverRating": { "type": "number" },
+        "status": { "type": "string", "enum": ["REQUESTED", "DRIVER_ASSIGNED", "DRIVER_ARRIVING", "DRIVER_ARRIVED", "RIDE_STARTED", "RIDE_COMPLETED", "PAYMENT_COMPLETED", "CANCELLED"] },
+        "vehicleType": { "type": "string", "enum": ["bike", "auto", "sedan", "suv"] },
+        "pickup": { "type": "object" },
+        "destination": { "type": "object" },
+        "estimatedDistanceKm": { "type": "number" },
+        "estimatedDurationMin": { "type": "number" },
+        "baseFare": { "type": "number" },
+        "surgePercentage": { "type": "number" },
+        "surgeAmount": { "type": "number" },
+        "finalFare": { "type": "number" },
+        "maxAllowedFare": { "type": "number" },
+        "routeGeometry": { "type": "string" },
+        "requestedAt": { "type": "string" },
+        "acceptedAt": { "type": "string" },
+        "startedAt": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "cancelledAt": { "type": "string" },
+        "cancellationReason": { "type": "string", "maxLength": 200 },
+        "paymentMethod": { "type": "string", "enum": ["cash", "upi", "card"] },
+        "paymentStatus": { "type": "string", "enum": ["PENDING", "COMPLETED", "FAILED"] },
+        "riderRating": { "type": "number" },
+        "riderFeedback": { "type": "string", "maxLength": 500 },
+        "driverRatingScore": { "type": "number" }
+      },
+      "required": ["id", "riderId", "status", "vehicleType", "pickup", "destination", "finalFare", "requestedAt"]
+    },
+    "Pricing": {
+      "title": "Pricing",
+      "description": "Vehicle tier pricing rules and surge caps",
+      "type": "object",
+      "properties": {
+        "vehicleType": { "type": "string", "enum": ["bike", "auto", "sedan", "suv"] },
+        "baseFare": { "type": "number" },
+        "perKmRate": { "type": "number" },
+        "perMinRate": { "type": "number" },
+        "maxSurgeCapPercent": { "type": "number" },
+        "demandThresholdRatio": { "type": "number" }
+      },
+      "required": ["vehicleType", "baseFare", "perKmRate", "perMinRate", "maxSurgeCapPercent"]
+    },
+    "EmergencyAlert": {
+      "title": "EmergencyAlert",
+      "description": "SOS emergency trigger information and real-time live location",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "rideId": { "type": "string", "maxLength": 128 },
+        "riderId": { "type": "string", "maxLength": 128 },
+        "driverId": { "type": "string", "maxLength": 128 },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "accuracy": { "type": "number" },
+        "timestamp": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "RESPONDED", "RESOLVED"] },
+        "resolvedAt": { "type": "string" },
+        "notes": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "rideId", "riderId", "lat", "lng", "timestamp", "status"]
+    },
+    "TrackingToken": {
+      "title": "TrackingToken",
+      "description": "Revocable token for trusted contact public tracking",
+      "type": "object",
+      "properties": {
+        "tokenHash": { "type": "string", "maxLength": 128 },
+        "rideId": { "type": "string", "maxLength": 128 },
+        "riderId": { "type": "string", "maxLength": 128 },
+        "riderFirstName": { "type": "string", "maxLength": 40 },
+        "expiresAt": { "type": "string" },
+        "isRevoked": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["tokenHash", "rideId", "riderId", "expiresAt", "isRevoked"]
+    },
+    "FraudReport": {
+      "title": "FraudReport",
+      "description": "Calculated GPS fraud telemetry metrics and anomaly classification",
+      "type": "object",
+      "properties": {
+        "rideId": { "type": "string", "maxLength": 128 },
+        "driverId": { "type": "string", "maxLength": 128 },
+        "riderId": { "type": "string", "maxLength": 128 },
+        "expectedDistanceKm": { "type": "number" },
+        "actualGpsDistanceKm": { "type": "number" },
+        "distanceDifferencePercent": { "type": "number" },
+        "maxRecordedSpeedKmh": { "type": "number" },
+        "hasImpossibleSpeed": { "type": "boolean" },
+        "hasGpsJumps": { "type": "boolean" },
+        "hasLargeTimestampGaps": { "type": "boolean" },
+        "routeDeviationsCount": { "type": "number" },
+        "riskClassification": { "type": "string", "enum": ["NORMAL", "WARNING", "SUSPICIOUS"] },
+        "status": { "type": "string", "enum": ["PENDING_REVIEW", "CONFIRMED_SAFE", "CONFIRMED_SUSPICIOUS"] },
+        "adminNotes": { "type": "string", "maxLength": 500 },
+        "computedAt": { "type": "string" }
+      },
+      "required": ["rideId", "driverId", "riskClassification", "status", "computedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles with strict self-access and admin oversight"
+    },
+    "/drivers/{driverId}": {
+      "schema": { "$ref": "#/entities/Driver" },
+      "description": "Public driver online presence, location and rating"
+    },
+    "/driverDocuments/{driverId}": {
+      "schema": { "$ref": "#/entities/DriverDocuments" },
+      "description": "Private compressed driver ID and RC documents accessible only to driver and admin"
+    },
+    "/rides/{rideId}": {
+      "schema": { "$ref": "#/entities/Ride" },
+      "description": "Ride instances with atomic state transitions"
+    },
+    "/rides/{rideId}/gpsLogs/{logId}": {
+      "schema": "object",
+      "description": "High-frequency breadcrumb GPS coordinates recorded during ride"
+    },
+    "/pricing/{vehicleType}": {
+      "schema": { "$ref": "#/entities/Pricing" },
+      "description": "Admin configurable pricing rates and surge caps"
+    },
+    "/emergencyAlerts/{alertId}": {
+      "schema": { "$ref": "#/entities/EmergencyAlert" },
+      "description": "SOS emergency alerts"
+    },
+    "/trackingTokens/{tokenHash}": {
+      "schema": { "$ref": "#/entities/TrackingToken" },
+      "description": "Hashed public tracking tokens for trusted contact viewing"
+    },
+    "/fraudReports/{rideId}": {
+      "schema": { "$ref": "#/entities/FraudReport" },
+      "description": "Algorithmic audit telemetry reports for ride GPS anomalies"
+    }
+  }
+}
